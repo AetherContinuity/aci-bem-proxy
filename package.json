@@ -1,0 +1,14 @@
+{
+  "name": "aci-bem-proxy",
+  "version": "0.1.0",
+  "description": "BEM — Biodiversity Endurance Monitor proxy · FinBIF API · ACI",
+  "main": "src/index.js",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
