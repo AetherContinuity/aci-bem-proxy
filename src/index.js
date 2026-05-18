@@ -44,7 +44,7 @@ const INDICATOR_SPECIES = {
 // Corrects for increasing observer effort over time
 const OBSERVER_GROWTH = {
   "2000/2010": 1.0,   // reference baseline
-  "2020/2026": 3.5,   // ~3.5x more observers due to iNaturalist growth
+  "2020/2026": 1.8,   // ~1.8x more observers (conservative estimate, time-normalized)
 };
 
 // CORS headers — open for WEM/HEM/BEM instrument pages
@@ -169,7 +169,13 @@ async function handleSpecies(url, token) {
         ratio >= 0.5     ? "declining" :
                            "strongly_declining";
 
-      results[id] = { name, ref_total: refTotal, cur_total: curTotal, ratio, trend };
+      results[id] = {
+        name,
+        ref_total: refTotal, ref_annual: Math.round(refAnnual * 10) / 10,
+        cur_total: curTotal, cur_annual: Math.round(curAnnual * 10) / 10,
+        ratio: ratio ? Math.round(ratio * 1000) / 1000 : null,
+        trend
+      };
     })
   );
 
