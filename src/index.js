@@ -25,19 +25,10 @@ const DEFAULT_BBOX = "26.00,62.40,27.50,63.50"; // wider for better coverage
 // Verified against FinBIF warehouse for Rautalammin reitti
 // Groups: forest connectivity, old-growth, water quality
 const INDICATOR_SPECIES = {
-  // Forest connectivity (confirmed working)
+  // Confirmed working in Rautalammin reitti bbox
   "MX.47169": "Pteromys volans (liito-orava / Siberian flying squirrel)",
-  
-  // Old-growth forest indicators
   "MX.73566": "Dryocopus martius (palokärki / black woodpecker)",
-  "MX.37153": "Tetrao urogallus (metso / western capercaillie)",
-  
-  // Riparian / water indicators
   "MX.27649": "Pandion haliaetus (kalasääski / osprey)",
-  "MX.26935": "Cygnus cygnus (laulujoutsen / whooper swan)",
-  
-  // Broad landscape indicators
-  "MX.36617": "Cuculus canorus (käki / common cuckoo)",
 };
 
 // Years per observer normalization factor (approximate FinBIF growth)
@@ -82,9 +73,17 @@ async function finbif(path, params, token) {
   for (const [k, v] of Object.entries(params)) {
     if (v !== null && v !== undefined) url.searchParams.set(k, v);
   }
-  const r = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000); // 8s timeout per request
+  let r;
+  try {
+    r = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
   if (!r.ok) throw new Error(`FinBIF ${r.status}: ${await r.text()}`);
   return r.json();
 }
@@ -435,7 +434,12 @@ export default {
         case "/copernicus/corine":
           return await handleCopernicusCorine(url);
         case "/ndvi":
-          return await handleNDVI(url);
+          return json({
+            status: "disabled",
+            reason: "Element84 STAC blocks Cloudflare Workers. Use locally: https://earth-search.aws.element84.com/v1",
+            alternative: "Download CORINE GeoTIFF from EEA for D_f calculation",
+            bem_component: "D_f (planned)"
+          });
         default:
           return err(`Unknown route: ${path}`, 404);
       }
