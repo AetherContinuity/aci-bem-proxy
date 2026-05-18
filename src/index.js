@@ -19,16 +19,32 @@
 const FINBIF_BASE = "https://api.laji.fi";
 
 // Default pilot area: Rautalammin reitti
-const DEFAULT_BBOX = "26.50,62.55,27.25,63.30";
+const DEFAULT_BBOX = "26.00,62.40,27.50,63.50"; // wider for better coverage
 
 // BEM indicator species for boreal forest/lake ecosystem
-// Sensitive to habitat fragmentation and ecological continuity
+// Verified against FinBIF warehouse for Rautalammin reitti
+// Groups: forest connectivity, old-growth, water quality
 const INDICATOR_SPECIES = {
+  // Forest connectivity (confirmed working)
   "MX.47169": "Pteromys volans (liito-orava / Siberian flying squirrel)",
-  "MX.37622": "Ficedula hypoleuca (kirjosieppo / pied flycatcher)",
-  "MX.37620": "Ficedula parva (pikkusieppo / red-breasted flycatcher)",
-  "MX.26969": "Gavia arctica (kuikka / black-throated loon)",
-  "MX.26966": "Mergus merganser (isokoskelo / common merganser)",
+  
+  // Old-growth forest indicators
+  "MX.73566": "Dryocopus martius (palokärki / black woodpecker)",
+  "MX.37153": "Tetrao urogallus (metso / western capercaillie)",
+  
+  // Riparian / water indicators
+  "MX.27649": "Pandion haliaetus (kalasääski / osprey)",
+  "MX.26935": "Cygnus cygnus (laulujoutsen / whooper swan)",
+  
+  // Broad landscape indicators
+  "MX.36617": "Cuculus canorus (käki / common cuckoo)",
+};
+
+// Years per observer normalization factor (approximate FinBIF growth)
+// Corrects for increasing observer effort over time
+const OBSERVER_GROWTH = {
+  "2000/2010": 1.0,   // reference baseline
+  "2020/2026": 3.5,   // ~3.5x more observers due to iNaturalist growth
 };
 
 // CORS headers — open for WEM/HEM/BEM instrument pages
@@ -158,12 +174,25 @@ async function handleSpecies(url, token) {
   );
 
   // Compute D_s from results
+  // Normalize for observer effort growth (FinBIF/iNaturalist ~3.5x more users 2020s vs 2000s)
+  // Prevents "increasing" bias from reporting growth rather than real population change
+  const obsGrowth = OBSERVER_GROWTH[curYears] || OBSERVER_GROWTH["2020/2026"];
+
   const stressValues = Object.values(results)
     .filter(r => r.ratio !== null)
     .map(r => {
-      if (r.ratio >= 1.2) return 0.1;
-      if (r.ratio >= 0.8) return 0.3;
-      if (r.ratio >= 0.5) return 0.6;
+      // Normalize ratio by observer growth factor
+      const normRatio = r.ratio / obsGrowth;
+      // Update trend with normalized ratio
+      r.norm_ratio = Math.round(normRatio * 1000) / 1000;
+      r.norm_trend =
+        normRatio >= 1.2 ? "increasing" :
+        normRatio >= 0.8 ? "stable" :
+        normRatio >= 0.5 ? "declining" :
+                           "strongly_declining";
+      if (normRatio >= 1.2) return 0.1;
+      if (normRatio >= 0.8) return 0.3;
+      if (normRatio >= 0.5) return 0.6;
       return 0.9;
     });
 
