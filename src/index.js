@@ -229,6 +229,99 @@ async function handleTaxon(url, token) {
   return json(data);
 }
 
+
+// ── Copernicus STAC ───────────────────────────────────────────────────────────
+
+const COPERNICUS_STAC = "https://catalogue.dataspace.copernicus.eu/stac";
+
+async function handleCopernicusNDVI(url) {
+  // GET /copernicus/ndvi?bbox=26.0,62.4,27.5,63.5&date=2024-07-01/2024-08-31
+  const bbox  = url.searchParams.get("bbox") || DEFAULT_BBOX;
+  const date  = url.searchParams.get("date") || "2024-07-01/2024-08-31";
+  const cloud = url.searchParams.get("cloud") || "20";
+
+  const [lng1, lat1, lng2, lat2] = bbox.split(",").map(Number);
+
+  // STAC search for Sentinel-2 L2A scenes
+  const query = {
+    bbox: [lng1, lat1, lng2, lat2],
+    datetime: date,
+    collections: ["SENTINEL-2"],
+    limit: 5,
+    query: {
+      "eo:cloud_cover": { "lte": parseFloat(cloud) },
+      "processingLevel": { "eq": "S2MSI2A" }
+    }
+  };
+
+  const r = await fetch(`${COPERNICUS_STAC}/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(query)
+  });
+
+  if (!r.ok) throw new Error(`Copernicus STAC ${r.status}: ${await r.text()}`);
+  const data = await r.json();
+
+  const scenes = (data.features || []).map(f => ({
+    id: f.id,
+    date: f.properties?.datetime,
+    cloud_cover: f.properties?.["eo:cloud_cover"],
+    ndvi_band_B04: f.assets?.B04?.href,
+    ndvi_band_B08: f.assets?.B08?.href,
+    thumbnail: f.assets?.thumbnail?.href,
+  }));
+
+  return json({
+    bbox,
+    date_range: date,
+    max_cloud_pct: parseFloat(cloud),
+    scene_count: scenes.length,
+    scenes,
+    note: "Use B08 (NIR) and B04 (Red) to compute NDVI = (B08-B04)/(B08+B04)",
+    bem_component: "D_f fragmentation (NDVI change over time)",
+    source: "Copernicus Data Space · Sentinel-2 L2A"
+  });
+}
+
+async function handleCopernicusCorine(url) {
+  // GET /copernicus/corine?bbox=26.0,62.4,27.5,63.5&year=2018
+  const bbox = url.searchParams.get("bbox") || DEFAULT_BBOX;
+  const year = url.searchParams.get("year") || "2018";
+
+  const [lng1, lat1, lng2, lat2] = bbox.split(",").map(Number);
+
+  const query = {
+    bbox: [lng1, lat1, lng2, lat2],
+    collections: ["CORINE-LAND-COVER"],
+    limit: 3,
+    query: { "year": { "eq": parseInt(year) } }
+  };
+
+  const r = await fetch(`${COPERNICUS_STAC}/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(query)
+  });
+
+  if (!r.ok) throw new Error(`Copernicus STAC ${r.status}: ${await r.text()}`);
+  const data = await r.json();
+
+  return json({
+    bbox,
+    year,
+    features: data.features?.length || 0,
+    items: (data.features || []).map(f => ({
+      id: f.id,
+      assets: Object.keys(f.assets || {}),
+      download: f.assets?.data?.href
+    })),
+    bem_component: "D_f fragmentation baseline",
+    note: "CORINE classes 311-313 = forest, 324 = transitional shrub (recent clearcut)",
+    source: "Copernicus Land Service · CORINE Land Cover"
+  });
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default {
@@ -261,6 +354,10 @@ export default {
           return await handleSpecies(url, token);
         case "/finbif/taxon":
           return await handleTaxon(url, token);
+        case "/copernicus/ndvi":
+          return await handleCopernicusNDVI(url);
+        case "/copernicus/corine":
+          return await handleCopernicusCorine(url);
         default:
           return err(`Unknown route: ${path}`, 404);
       }
@@ -269,3 +366,4 @@ export default {
     }
   },
 };
+// ── This block is a documentation comment only — see handleCopernicus below ──
