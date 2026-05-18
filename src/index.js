@@ -320,6 +320,77 @@ async function handleCopernicusCorine(url) {
   });
 }
 
+
+// ── Element84 STAC + NDVI ────────────────────────────────────────────────────
+
+const E84_STAC = "https://earth-search.aws.element84.com/v1";
+
+async function handleNDVI(url) {
+  const bbox  = url.searchParams.get("bbox") || DEFAULT_BBOX;
+  const date  = url.searchParams.get("date") || "2023-07-01/2023-08-31";
+  const cloud = parseFloat(url.searchParams.get("cloud") || "20");
+  const download = url.searchParams.get("download") === "true";
+
+  const [lng1, lat1, lng2, lat2] = bbox.split(",").map(Number);
+
+  // 1. STAC search
+  const query = {
+    collections: ["sentinel-2-l2a"],
+    bbox: [lng1, lat1, lng2, lat2],
+    datetime: date,
+    query: { "eo:cloud_cover": { lt: cloud } },
+    limit: 3,
+    sortby: [{ field: "datetime", direction: "desc" }]
+  };
+
+  const sr = await fetch(`${E84_STAC}/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(query)
+  });
+  if (!sr.ok) throw new Error(`E84 STAC ${sr.status}`);
+  const stac = await sr.json();
+  const features = stac.features || [];
+
+  if (features.length === 0) {
+    return json({ error: "No scenes found", bbox, date, cloud_max: cloud });
+  }
+
+  // Best scene (lowest cloud cover)
+  const best = features.sort((a, b) =>
+    (a.properties?.["eo:cloud_cover"] || 99) - (b.properties?.["eo:cloud_cover"] || 99)
+  )[0];
+
+  const assets = best.assets || {};
+  const b04url = assets.red?.href || assets.B04?.href;
+  const b08url = assets.nir?.href || assets.B08?.href;
+
+  const meta = {
+    scene_id: best.id,
+    date: best.properties?.datetime?.slice(0, 10),
+    cloud_pct: best.properties?.["eo:cloud_cover"],
+    b04_url: b04url,
+    b08_url: b08url,
+    all_scenes: features.length,
+    note: "NDVI = (B08 - B04) / (B08 + B04)"
+  };
+
+  // If download=true, fetch a small COG window for NDVI estimation
+  if (download && b04url && b08url) {
+    // COG range request — first 16KB = header + overview
+    const [r04, r08] = await Promise.all([
+      fetch(b04url, { headers: { Range: "bytes=0-16383" } }),
+      fetch(b08url, { headers: { Range: "bytes=0-16383" } })
+    ]);
+    meta.cog_b04_bytes = r04.headers.get("content-range");
+    meta.cog_b08_bytes = r08.headers.get("content-range");
+    meta.cog_status = `B04: ${r04.status} B08: ${r08.status}`;
+    meta.cog_note = "Full NDVI requires rasterio + COG window read — run locally";
+  }
+
+  return json({ bbox, date_range: date, ...meta, source: "Element84 Earth Search · Sentinel-2 L2A" });
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default {
@@ -356,6 +427,8 @@ export default {
           return await handleCopernicusNDVI(url);
         case "/copernicus/corine":
           return await handleCopernicusCorine(url);
+        case "/ndvi":
+          return await handleNDVI(url);
         default:
           return err(`Unknown route: ${path}`, 404);
       }
