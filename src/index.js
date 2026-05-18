@@ -146,7 +146,6 @@ async function handleSpecies(url, token) {
 
   const results = {};
 
-  const settled = await (async () => {
   const settled = await Promise.allSettled(
     Object.entries(INDICATOR_SPECIES).map(async ([id, name]) => {
       const [ref, cur] = await Promise.all([
@@ -184,7 +183,6 @@ async function handleSpecies(url, token) {
   );
   const fails = settled.filter(r => r.status==="rejected").length;
   if (fails) console.log("Species failures:", fails);
-  })();
 
   // Normalize for observer effort growth (FinBIF/iNaturalist ~3.5x more users 2020s vs 2000s)
   // Prevents "increasing" bias from reporting growth rather than real population change
