@@ -146,7 +146,8 @@ async function handleSpecies(url, token) {
 
   const results = {};
 
-  await Promise.allSettled(
+  const settled = await (async () => {
+  const settled = await Promise.allSettled(
     Object.entries(INDICATOR_SPECIES).map(async ([id, name]) => {
       const [ref, cur] = await Promise.all([
         finbif("/warehouse/query/unit/list", {
@@ -180,6 +181,11 @@ async function handleSpecies(url, token) {
   );
 
   // Compute D_s from results
+  );
+  const fails = settled.filter(r => r.status==="rejected").length;
+  if (fails) console.log("Species failures:", fails);
+  })();
+
   // Normalize for observer effort growth (FinBIF/iNaturalist ~3.5x more users 2020s vs 2000s)
   // Prevents "increasing" bias from reporting growth rather than real population change
   const obsGrowth = OBSERVER_GROWTH[curYears] || OBSERVER_GROWTH["2020/2026"];
@@ -266,7 +272,10 @@ async function handleCopernicusNDVI(url) {
     id: p.Id,
     name: p.Name,
     date: p.ContentDate?.Start?.slice(0,10),
-    cloud_pct: p.Attributes?.find(a => a.Name==='cloudCover')?.Value,
+    cloud_pct: (p.Attributes||[]).find(a => a.Name==='cloudCover' || a.Name==='Cloud cover')?.Value || null 
+             ?? p.Attributes?.find(a => a.Name==='Cloud cover')?.Value
+             ?? null,
+    tile: p.Name?.match(/T\d+[A-Z]+/)?.[0] || null,
     size_mb: p.ContentLength ? Math.round(p.ContentLength/1048576) : null,
   }));
 
