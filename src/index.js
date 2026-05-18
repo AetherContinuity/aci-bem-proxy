@@ -232,55 +232,53 @@ async function handleTaxon(url, token) {
 
 // ── Copernicus STAC ───────────────────────────────────────────────────────────
 
-const COPERNICUS_STAC = "https://catalogue.dataspace.copernicus.eu/stac";
+const COPERNICUS_ODATA = "https://catalogue.dataspace.copernicus.eu/odata/v1";
+const COPERNICUS_STAC  = "https://catalogue.dataspace.copernicus.eu/stac/v1";
 
 async function handleCopernicusNDVI(url) {
-  // GET /copernicus/ndvi?bbox=26.0,62.4,27.5,63.5&date=2024-07-01/2024-08-31
   const bbox  = url.searchParams.get("bbox") || DEFAULT_BBOX;
-  const date  = url.searchParams.get("date") || "2024-07-01/2024-08-31";
-  const cloud = url.searchParams.get("cloud") || "20";
+  const date  = url.searchParams.get("date") || "2024-07-01/2024-09-30";
+  const cloud = parseFloat(url.searchParams.get("cloud") || "20");
 
   const [lng1, lat1, lng2, lat2] = bbox.split(",").map(Number);
+  const [dateStart, dateEnd] = date.split("/");
 
-  // STAC search for Sentinel-2 L2A scenes
-  const query = {
-    bbox: [lng1, lat1, lng2, lat2],
-    datetime: date,
-    collections: ["SENTINEL-2"],
-    limit: 5,
-    query: {
-      "eo:cloud_cover": { "lte": parseFloat(cloud) },
-      "processingLevel": { "eq": "S2MSI2A" }
-    }
-  };
+  // Copernicus OData API — no auth required for catalogue search
+  const filter = [
+    `Collection/Name eq 'SENTINEL-2'`,
+    `OData.CSC.Intersects(area=geography'SRID=4326;POLYGON((${lng1} ${lat1},${lng2} ${lat1},${lng2} ${lat2},${lng1} ${lat2},${lng1} ${lat1}))')`,
+    `ContentDate/Start gt ${dateStart}T00:00:00.000Z`,
+    `ContentDate/Start lt ${dateEnd}T23:59:59.000Z`,
+    `Attributes/OData.CSC.DoubleAttribute/any(att:att/Name eq 'cloudCover' and att/OData.CSC.DoubleAttribute/Value le ${cloud})`,
+    `Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq 'S2MSI2A')`
+  ].join(' and ');
 
-  const r = await fetch(`${COPERNICUS_STAC}/search`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(query)
+  const odataUrl = `${COPERNICUS_ODATA}/Products?\$filter=${encodeURIComponent(filter)}&\$top=5&\$orderby=ContentDate/Start desc`;
+
+  const r = await fetch(odataUrl, {
+    headers: { "Accept": "application/json" }
   });
 
-  if (!r.ok) throw new Error(`Copernicus STAC ${r.status}: ${await r.text()}`);
+  if (!r.ok) throw new Error(`Copernicus OData ${r.status}`);
   const data = await r.json();
 
-  const scenes = (data.features || []).map(f => ({
-    id: f.id,
-    date: f.properties?.datetime,
-    cloud_cover: f.properties?.["eo:cloud_cover"],
-    ndvi_band_B04: f.assets?.B04?.href,
-    ndvi_band_B08: f.assets?.B08?.href,
-    thumbnail: f.assets?.thumbnail?.href,
+  const scenes = (data.value || []).map(p => ({
+    id: p.Id,
+    name: p.Name,
+    date: p.ContentDate?.Start?.slice(0,10),
+    cloud_pct: p.Attributes?.find(a => a.Name==='cloudCover')?.Value,
+    size_mb: p.ContentLength ? Math.round(p.ContentLength/1048576) : null,
   }));
 
   return json({
     bbox,
     date_range: date,
-    max_cloud_pct: parseFloat(cloud),
+    max_cloud_pct: cloud,
     scene_count: scenes.length,
     scenes,
-    note: "Use B08 (NIR) and B04 (Red) to compute NDVI = (B08-B04)/(B08+B04)",
-    bem_component: "D_f fragmentation (NDVI change over time)",
-    source: "Copernicus Data Space · Sentinel-2 L2A"
+    note: "Download full scene for B04+B08 NDVI calculation",
+    bem_component: "D_f fragmentation",
+    source: "Copernicus Data Space · OData · Sentinel-2 L2A"
   });
 }
 
