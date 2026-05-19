@@ -400,6 +400,27 @@ async function handleNDVI(url) {
   return json({ bbox, date_range: date, ...meta, source: "Element84 Earth Search · Sentinel-2 L2A" });
 }
 
+
+async function handleDebug(url, token) {
+  const taxon = url.searchParams.get("taxon") || "MX.47169";
+  const coords = bboxToFinBif("26.00,62.40,27.50,63.50");
+  const log = [];
+
+  log.push({ step: "start", taxon, coords, token_set: !!token });
+
+  try {
+    const r = await finbif("/warehouse/query/unit/list", {
+      taxonId: taxon, coordinates: coords,
+      time: "2000/2010", pageSize: 1, cache: "true",
+    }, token);
+    log.push({ step: "ref_ok", total: r.total });
+  } catch(e) {
+    log.push({ step: "ref_error", error: e.message });
+  }
+
+  return json({ debug: log });
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default {
@@ -428,6 +449,8 @@ export default {
           return handleStatus();
         case "/finbif/observations":
           return await handleObservations(url, token);
+        case "/finbif/debug":
+          return await handleDebug(url, token);
         case "/finbif/species":
           return await handleSpecies(url, token);
         case "/finbif/taxon":
