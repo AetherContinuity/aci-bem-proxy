@@ -7,3 +7,5 @@ PILOT_BBOX = "26.50,62.55,27.25,63.30"
 
 # Secrets (set via: wrangler secret put FINBIF_TOKEN)
 # FINBIF_TOKEN — FinBIF API access token
+
+account_id = "79e40ead45c4c68b4af515b6e6362bf6"
