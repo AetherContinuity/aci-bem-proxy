@@ -272,9 +272,7 @@ async function handleCopernicusNDVI(url) {
     id: p.Id,
     name: p.Name,
     date: p.ContentDate?.Start?.slice(0,10),
-    cloud_pct: (p.Attributes||[]).find(a => a.Name==='cloudCover' || a.Name==='Cloud cover')?.Value || null 
-             ?? p.Attributes?.find(a => a.Name==='Cloud cover')?.Value
-             ?? null,
+    cloud_pct: ((p.Attributes||[]).find(a => a.Name==='cloudCover' || a.Name==='Cloud cover')?.Value) ?? null,
     tile: p.Name?.match(/T\d+[A-Z]+/)?.[0] || null,
     size_mb: p.ContentLength ? Math.round(p.ContentLength/1048576) : null,
   }));
