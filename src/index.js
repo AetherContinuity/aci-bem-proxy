@@ -25,10 +25,12 @@ const DEFAULT_BBOX = "26.00,62.40,27.50,63.50"; // wider for better coverage
 // Verified against FinBIF warehouse for Rautalammin reitti
 // Groups: forest connectivity, old-growth, water quality
 const INDICATOR_SPECIES = {
-  // Confirmed working in Rautalammin reitti bbox
   "MX.47169": "Pteromys volans (liito-orava / Siberian flying squirrel)",
   "MX.73566": "Dryocopus martius (palokärki / black woodpecker)",
   "MX.27649": "Pandion haliaetus (kalasääski / osprey)",
+  "MX.37153": "Tetrao urogallus (metso / western capercaillie)",
+  "MX.26935": "Cygnus cygnus (laulujoutsen / whooper swan)",
+  "MX.36617": "Cuculus canorus (käki / common cuckoo)",
 };
 
 // Years per observer normalization factor (approximate FinBIF growth)
@@ -68,7 +70,7 @@ function parseYears(y) {
   return y.includes("-") ? y.replace("-", "/") : y;
 }
 
-async function finbif(path, params, token) {
+async function finbif(path, params, token, signal) {
   const url = new URL(`${FINBIF_BASE}${path}`);
   for (const [k, v] of Object.entries(params)) {
     if (v !== null && v !== undefined) url.searchParams.set(k, v);
@@ -138,72 +140,70 @@ async function handleObservations(url, token) {
 }
 
 async function handleSpecies(url, token) {
-  const bbox      = url.searchParams.get("bbox")      || DEFAULT_BBOX;
-  const refYears  = parseYears(url.searchParams.get("ref_years")) || "2000/2010";
-  const curYears  = parseYears(url.searchParams.get("cur_years")) || "2020/2026";
-  const coords    = bboxToFinBif(bbox);
+  const bbox     = url.searchParams.get("bbox")      || DEFAULT_BBOX;
+  const refYears = parseYears(url.searchParams.get("ref_years")) || "2000/2010";
+  const curYears = parseYears(url.searchParams.get("cur_years")) || "2020/2026";
+  const coords   = bboxToFinBif(bbox);
 
   const results = {};
 
-  const settled = await Promise.allSettled(
+  await Promise.allSettled(
     Object.entries(INDICATOR_SPECIES).map(async ([id, name]) => {
-      const [ref, cur] = await Promise.all([
-        finbif("/warehouse/query/unit/list", {
-          taxonId: id, coordinates: coords,
-          time: refYears, pageSize: 1, cache: "true",
-        }, token),
-        finbif("/warehouse/query/unit/list", {
-          taxonId: id, coordinates: coords,
-          time: curYears, pageSize: 1, cache: "true",
-        }, token),
-      ]);
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const [ref, cur] = await Promise.all([
+          finbif("/warehouse/query/unit/list",
+            { taxonId: id, coordinates: coords, time: refYears, pageSize: 1, cache: "true" },
+            token, ctrl.signal),
+          finbif("/warehouse/query/unit/list",
+            { taxonId: id, coordinates: coords, time: curYears, pageSize: 1, cache: "true" },
+            token, ctrl.signal),
+        ]);
 
-      const refTotal = ref.total ?? 0;
-      const curTotal = cur.total ?? 0;
-      // Normalize to annual rate (ref period = 10yr, cur = 6yr)
-      const refLen = 10, curLen = 6;
-      const refAnnual = refTotal / refLen;
-      const curAnnual = curTotal / curLen;
-      const ratio = refAnnual > 0 ? curAnnual / refAnnual : null;
-      const trend =
-        ratio === null ? "no_data" :
-        ratio >= 1.2   ? "increasing" :
-        ratio >= 0.8   ? "stable" :
-        ratio >= 0.5   ? "declining" :
-                         "strongly_declining";
+        const refTotal = ref.total ?? 0;
+        const curTotal = cur.total ?? 0;
+        const ratio    = refTotal > 0 ? curTotal / refTotal : null;
 
-      results[id] = {
-        name,
-        ref_total: refTotal, ref_annual: Math.round(refAnnual * 10) / 10,
-        cur_total: curTotal, cur_annual: Math.round(curAnnual * 10) / 10,
-        ratio: ratio !== null ? Math.round(ratio * 1000) / 1000 : null,
-        trend
-      };
+        const trend =
+          ratio === null ? "no_data" :
+          ratio >= 1.2   ? "increasing" :
+          ratio >= 0.8   ? "stable" :
+          ratio >= 0.5   ? "declining" :
+                           "strongly_declining";
+
+        const obsGrowth = OBSERVER_GROWTH[curYears] || 1.8;
+        const normRatio = ratio !== null ? ratio / obsGrowth : null;
+        const normTrend =
+          normRatio === null  ? "no_data" :
+          normRatio >= 1.2    ? "increasing" :
+          normRatio >= 0.8    ? "stable" :
+          normRatio >= 0.5    ? "declining" :
+                                "strongly_declining";
+
+        results[id] = {
+          name,
+          ref_total: refTotal,
+          cur_total: curTotal,
+          ratio:      ratio     !== null ? Math.round(ratio     * 1000) / 1000 : null,
+          norm_ratio: normRatio !== null ? Math.round(normRatio * 1000) / 1000 : null,
+          trend,
+          norm_trend: normTrend,
+        };
+      } catch(e) {
+        results[id] = { name, error: e.message, ref_total: 0, cur_total: 0, ratio: null, trend: "no_data" };
+      } finally {
+        clearTimeout(timer);
+      }
     })
   );
 
-  const fails = settled.filter(r => r.status==="rejected").length;
-  if (fails) console.log("Species failures:", fails);
-
-  // Normalize for observer effort growth (FinBIF/iNaturalist ~3.5x more users 2020s vs 2000s)
-  // Prevents "increasing" bias from reporting growth rather than real population change
-  const obsGrowth = OBSERVER_GROWTH[curYears] || OBSERVER_GROWTH["2020/2026"];
-
   const stressValues = Object.values(results)
-    .filter(r => r.ratio !== null)
+    .filter(r => r.norm_ratio !== null)
     .map(r => {
-      // Normalize ratio by observer growth factor
-      const normRatio = r.ratio / obsGrowth;
-      // Update trend with normalized ratio
-      r.norm_ratio = Math.round(normRatio * 1000) / 1000;
-      r.norm_trend =
-        normRatio >= 1.2 ? "increasing" :
-        normRatio >= 0.8 ? "stable" :
-        normRatio >= 0.5 ? "declining" :
-                           "strongly_declining";
-      if (normRatio >= 1.2) return 0.1;
-      if (normRatio >= 0.8) return 0.3;
-      if (normRatio >= 0.5) return 0.6;
+      if (r.norm_ratio >= 1.2) return 0.1;
+      if (r.norm_ratio >= 0.8) return 0.3;
+      if (r.norm_ratio >= 0.5) return 0.6;
       return 0.9;
     });
 
@@ -221,6 +221,7 @@ async function handleSpecies(url, token) {
     source: "FinBIF warehouse",
   });
 }
+
 
 async function handleTaxon(url, token) {
   const id = url.searchParams.get("id");
