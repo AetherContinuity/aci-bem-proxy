@@ -160,26 +160,28 @@ async function handleSpecies(url, token) {
 
       const refTotal = ref.total ?? 0;
       const curTotal = cur.total ?? 0;
-      const ratio = refTotal > 0 ? curTotal / refTotal : null;
+      // Normalize to annual rate (ref period = 10yr, cur = 6yr)
+      const refLen = 10, curLen = 6;
+      const refAnnual = refTotal / refLen;
+      const curAnnual = curTotal / curLen;
+      const ratio = refAnnual > 0 ? curAnnual / refAnnual : null;
       const trend =
-        ratio === null   ? "no_data" :
-        ratio >= 1.2     ? "increasing" :
-        ratio >= 0.8     ? "stable" :
-        ratio >= 0.5     ? "declining" :
-                           "strongly_declining";
+        ratio === null ? "no_data" :
+        ratio >= 1.2   ? "increasing" :
+        ratio >= 0.8   ? "stable" :
+        ratio >= 0.5   ? "declining" :
+                         "strongly_declining";
 
       results[id] = {
         name,
         ref_total: refTotal, ref_annual: Math.round(refAnnual * 10) / 10,
         cur_total: curTotal, cur_annual: Math.round(curAnnual * 10) / 10,
-        ratio: ratio ? Math.round(ratio * 1000) / 1000 : null,
+        ratio: ratio !== null ? Math.round(ratio * 1000) / 1000 : null,
         trend
       };
     })
   );
 
-  // Compute D_s from results
-  );
   const fails = settled.filter(r => r.status==="rejected").length;
   if (fails) console.log("Species failures:", fails);
 
