@@ -25,12 +25,15 @@ const DEFAULT_BBOX = "26.00,62.40,27.50,63.50"; // wider for better coverage
 // Verified against FinBIF warehouse for Rautalammin reitti
 // Groups: forest connectivity, old-growth, water quality
 const INDICATOR_SPECIES = {
+  // Metsälajit / Forest species
   "MX.47169": "Pteromys volans (liito-orava / Siberian flying squirrel)",
   "MX.73566": "Dryocopus martius (palokärki / black woodpecker)",
   "MX.27649": "Pandion haliaetus (kalasääski / osprey)",
   "MX.37153": "Tetrao urogallus (metso / western capercaillie)",
-  "MX.26935": "Cygnus cygnus (laulujoutsen / whooper swan)",
-  "MX.36617": "Cuculus canorus (käki / common cuckoo)",
+  // Sorsalinnut / Waterfowl — vesistöekosysteemin indikaattorit
+  "MX.26620": "Aythya fuligula (tukkasotka / tufted duck)",
+  "MX.26738": "Bucephala clangula (telkkä / common goldeneye)",
+  "MX.26407": "Anas crecca (tavi / Eurasian teal)",
 };
 
 // Years per observer normalization factor (approximate FinBIF growth)
