@@ -3,32 +3,26 @@ name: Deploy BEM Proxy to Cloudflare Workers
 on:
   push:
     branches: [main]
-    paths: ['src/**']
   workflow_dispatch:
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    name: Deploy Worker
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Install Wrangler
-        run: npm install -g wrangler
+        run: npm install -g wrangler@latest
 
-      - name: Check wrangler version
+      - name: Wrangler version
         run: wrangler --version
 
       - name: Deploy
-        run: wrangler deploy --verbose
+        run: wrangler deploy 2>&1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
