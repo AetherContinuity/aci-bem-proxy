@@ -29,19 +29,26 @@ const INDICATOR_SPECIES = {
   "MX.47169": "Pteromys volans (liito-orava / Siberian flying squirrel)",
   "MX.73566": "Dryocopus martius (palokärki / black woodpecker)",
   "MX.27649": "Pandion haliaetus (kalasääski / osprey)",
-  "MX.37153": "Tetrao urogallus (metso / western capercaillie)",
+  "MX.26928": "Tetrao urogallus (metso / western capercaillie)",
   // Sorsalinnut / Waterfowl — vesistöekosysteemin indikaattorit
-  "MX.26620": "Aythya fuligula (tukkasotka / tufted duck)",
-  "MX.26738": "Bucephala clangula (telkkä / common goldeneye)",
-  "MX.26407": "Anas crecca (tavi / Eurasian teal)",
+  "MX.26415": "Aythya fuligula (tukkasotka / tufted duck)",
+  "MX.26435": "Bucephala clangula (telkkä / common goldeneye)",
+  "MX.26366": "Anas crecca (tavi / Eurasian teal)",
 };
 
-// Years per observer normalization factor (approximate FinBIF growth)
-// Corrects for increasing observer effort over time
-const OBSERVER_GROWTH = {
-  "2000/2010": 1.0,   // reference baseline
-  "2020/2026": 1.8,   // ~1.8x more observers (conservative estimate, time-normalized)
-};
+// Havaintoaktiivisuuden normalisointi (2026-10-15): lajin osuus kaikista saman
+// jakson ja alueen lintuhavainnoista (Aves). Aiempi kiintea kerroin 1.8 oletti
+// aktiivisuuden kasvaneen, mutta Rautalammin reitilla lintuhavaintoja on
+// 2000-2010 noin 86 600 ja 2020-2026 noin 86 100 -> kokonaismaarien suhde ~1.0.
+// Liito-orava ei ole lintu; sille kaytetaan samaa lintuaktiivisuutta (karkea).
+const EFFORT_TAXON = "MX.37580"; // Aves
+
+const D_S_CAVEATS = [
+  "D_s ei ole validoitu: FinBIF-havaintomaarat heijastavat raportointia ja aineistolahteita, eivat vain kantoja.",
+  "Viitejaksoon 2000-2010 osuu Lintuatlas 3 (2006-2010), joka nostaa mm. kalasaasken, metson ja tukkasotkan havaintoja.",
+  "Metson havainnot hyppaavat vuodesta 2022 ja tavin vuodesta 2020 alkaen (noin 5/v -> 50-180/v): todennakoisesti uusi aineistolahde, ei kannan kasvu.",
+  "Liito-oravan havaintojen sijainteja karkeistetaan, joten rajatun alueen maarat ovat epaluotettavia.",
+];
 
 // CORS headers — open for WEM/HEM/BEM instrument pages
 const CORS = {
@@ -110,10 +117,10 @@ function handleStatus() {
     },
     indicator_species: INDICATOR_SPECIES,
     bepp_components: {
-      D_f: "Fragmentation (Sentinel-2 / CORINE — planned)",
-      D_s: "Species stress (FinBIF — THIS proxy)",
-      D_c: "Cumulative disturbance (YVA database — planned)",
-      R:   "Recovery capacity (SYKE protected areas — planned)",
+      D_f: "Fragmentation (aci-corine-proxy: CORINE + Sentinel-2 NDVI)",
+      D_s: "Species stress (FinBIF — THIS proxy, not validated)",
+      D_c: "Cumulative disturbance (site data/bem-dc-2004-2025.json)",
+      R:   "Protected-area share (aci-corine-proxy, SYKE)",
     },
     reference: "https://aethercontinuity.org/supplements/tn-015-biodiversity-endurance-monitor.html",
   });
@@ -150,6 +157,22 @@ async function handleSpecies(url, token) {
 
   const results = {};
 
+  // Havaintoaktiivisuus: kaikki lintuhavainnot samalta alueelta ja jaksolta
+  let effort = { taxon: EFFORT_TAXON, ref_total: null, cur_total: null, ratio: null, error: null };
+  try {
+    const [er, ec] = await Promise.all([
+      finbif("/warehouse/query/unit/list",
+        { taxonId: EFFORT_TAXON, coordinates: coords, time: refYears, pageSize: 1, cache: "true" }, token),
+      finbif("/warehouse/query/unit/list",
+        { taxonId: EFFORT_TAXON, coordinates: coords, time: curYears, pageSize: 1, cache: "true" }, token),
+    ]);
+    effort.ref_total = er.total ?? 0;
+    effort.cur_total = ec.total ?? 0;
+    effort.ratio = effort.ref_total > 0 ? Math.round(effort.cur_total / effort.ref_total * 1000) / 1000 : null;
+  } catch (e) {
+    effort.error = e.message;
+  }
+
   await Promise.allSettled(
     Object.entries(INDICATOR_SPECIES).map(async ([id, name]) => {
       const ctrl = new AbortController();
@@ -175,8 +198,8 @@ async function handleSpecies(url, token) {
           ratio >= 0.5   ? "declining" :
                            "strongly_declining";
 
-        const obsGrowth = OBSERVER_GROWTH[curYears] || 1.8;
-        const normRatio = ratio !== null ? ratio / obsGrowth : null;
+        // Lajin osuus lintuhavainnoista nyk. jaksolla / viitejaksolla
+        const normRatio = (ratio !== null && effort.ratio) ? ratio / effort.ratio : null;
         const normTrend =
           normRatio === null  ? "no_data" :
           normRatio >= 1.2    ? "increasing" :
@@ -210,16 +233,20 @@ async function handleSpecies(url, token) {
       return 0.9;
     });
 
+  // Ei kiinteaa 0.5-varaa: ilman normalisoitavia lajeja D_s puuttuu
   const D_s = stressValues.length > 0
     ? stressValues.reduce((a, b) => a + b, 0) / stressValues.length
-    : 0.5;
+    : null;
 
   return json({
     bbox,
     ref_years: refYears,
     cur_years: curYears,
-    D_s: Math.round(D_s * 1000) / 1000,
-    D_s_classification: D_s < 0.25 ? "Normal" : D_s < 0.5 ? "Elevated" : "Critical",
+    D_s: D_s !== null ? Math.round(D_s * 1000) / 1000 : null,
+    D_s_validated: false,
+    normalisointi: "lajin osuus kaikista saman alueen ja jakson lintuhavainnoista (FinBIF, Aves), nykyjakso / viitejakso",
+    effort,
+    huomiot: D_S_CAVEATS,
     species: results,
     source: "FinBIF warehouse",
   });
