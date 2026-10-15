@@ -33,13 +33,27 @@ Worker URL: `https://aci-bem-proxy.ruotsalainen-marko.workers.dev`
 
 ## Indicator species (D_s component)
 
-| MX ID | Species | Role |
-|-------|---------|------|
-| MX.47169 | Pteromys volans (liito-orava) | Forest connectivity |
-| MX.37622 | Ficedula hypoleuca (kirjosieppo) | Old-growth forest |
-| MX.37620 | Ficedula parva (pikkusieppo) | Riparian forest |
-| MX.26969 | Gavia arctica (kuikka) | Lake water quality |
-| MX.26966 | Mergus merganser (isokoskelo) | River/lake health |
+| MX ID | Species | Group |
+|-------|---------|-------|
+| MX.47169 | Pteromys volans (liito-orava) | Forest |
+| MX.73566 | Dryocopus martius (palokärki) | Forest |
+| MX.27649 | Pandion haliaetus (kalasääski) | Forest/lake |
+| MX.26928 | Tetrao urogallus (metso) | Forest |
+| MX.26415 | Aythya fuligula (tukkasotka) | Waterfowl |
+| MX.26435 | Bucephala clangula (telkkä) | Waterfowl |
+| MX.26366 | Anas crecca (tavi) | Waterfowl |
+
+### Normalisointi (2026-10-15)
+
+`norm_ratio` = lajin osuus kaikista saman alueen ja jakson lintuhavainnoista (Aves, MX.37580),
+nykyjakso jaettuna viitejaksolla. Korvasi kiinteän kertoimen 1,8: Rautalammin reitillä
+lintuhavaintoja on 2000–2010 noin 86 600 ja 2020–2026 noin 86 100. Jos Aves-haku epäonnistuu,
+`D_s` on `null` (ei kiinteää 0,5-varaa).
+
+`D_s_validated: false` ja `huomiot` kertovat, miksi D_s ei ole validoitu (Lintuatlas 3
+viitejaksolla, aineistolähteiden hypyt metsolla ja tavilla, liito-oravan sijaintien karkeistus).
+
+Testit: `node test/test.mjs` (FinBIF mockattu).
 
 ---
 
