@@ -44,10 +44,10 @@ const INDICATOR_SPECIES = {
 const EFFORT_TAXON = "MX.37580"; // Aves
 
 const D_S_CAVEATS = [
-  "D_s ei ole validoitu: FinBIF-havaintomaarat heijastavat raportointia ja aineistolahteita, eivat vain kantoja.",
-  "Viitejaksoon 2000-2010 osuu Lintuatlas 3 (2006-2010), joka nostaa mm. kalasaasken, metson ja tukkasotkan havaintoja.",
-  "Metson havainnot hyppaavat vuodesta 2022 ja tavin vuodesta 2020 alkaen (noin 5/v -> 50-180/v): todennakoisesti uusi aineistolahde, ei kannan kasvu.",
-  "Liito-oravan havaintojen sijainteja karkeistetaan, joten rajatun alueen maarat ovat epaluotettavia.",
+  "D_s ei ole validoitu: FinBIF-havaintomäärät heijastavat raportointia ja aineistolähteitä, eivät vain kantoja.",
+  "Viitejaksoon 2000–2010 osuu Lintuatlas 3 (2006–2010), joka nostaa mm. kalasääsken, metson ja tukkasotkan havaintoja.",
+  "Metson havainnot hyppäävät vuodesta 2022 ja tavin vuodesta 2020 alkaen (noin 5/v → 50–180/v): todennäköisesti uusi aineistolähde, ei kannan kasvu.",
+  "Liito-oravan havaintojen sijainteja karkeistetaan, joten rajatun alueen määrät ovat epäluotettavia.",
 ];
 
 // CORS headers — open for WEM/HEM/BEM instrument pages
